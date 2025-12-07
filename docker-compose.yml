@@ -1,23 +1,22 @@
 services:
   rso-frontend:
-    container_name: rso-frontend
     build:
       context: .
-      target: dev
+      dockerfile: Dockerfile
+    container_name: rso-frontend
     ports:
       - "3003:3000"
     environment:
-      NUXT_HOST: "0.0.0.0"
-      NUXT_PORT: "3000"
-
-      CHOKIDAR_USEPOLLING: "true"
-      CHOKIDAR_INTERVAL: "200"
-
-      NODE_ENV: "development"
-
+      NUXT_PUBLIC_API_BASE: "http://localhost:8081"
+      NUXT_PUBLIC_KC_URL: "http://localhost:8080"
+      NUXT_PUBLIC_KC_REALM: "rso"
+      NUXT_PUBLIC_KC_CLIENT_ID: "rso-frontend"
     volumes:
-      - .:/usr/src/app
-      - /usr/src/app/node_modules
-      - /usr/src/app/.nuxt
-
+      - .:/app
+      - rso_frontend_node_modules:/app/node_modules
+      - rso_frontend_nuxt:/app/.nuxt
     command: npm run dev -- --host 0.0.0.0 --port 3000
+
+volumes:
+  rso_frontend_node_modules:
+  rso_frontend_nuxt:
