@@ -1,46 +1,60 @@
 <template>
   <div class="space-y-6">
-    <NuxtLink to="/courses" class="text-sm opacity-70">← Back</NuxtLink>
+    <div class="flex items-center justify-between">
+      <NuxtLink to="/courses" class="text-sm opacity-70">← Back to courses</NuxtLink>
+      <RoleBadge />
+    </div>
 
     <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-semibold">Lectures</h1>
+      <h1 class="text-2xl font-semibold tracking-tight">Lectures</h1>
       <span class="text-xs opacity-60">
         {{ auth.isProfessor ? 'Professor view' : 'Student view' }}
       </span>
     </div>
 
-    <UCard>
-      <div class="flex flex-col md:flex-row gap-2">
-        <UInput v-model="title" placeholder="Lecture title" class="flex-1" />
-        <UInput
-        v-model="manifest"
-        placeholder="Manifest URL"
-        />
+    <!-- Add lecture (prof only) -->
+    <UCard v-if="auth.isProfessor">
+      <div class="space-y-3">
+        <div class="flex items-center gap-2">
+          <UIcon name="i-heroicons-plus-circle" />
+          <div class="font-semibold">Add lecture</div>
+        </div>
 
-        <UButton
-          color="primary"
-          :disabled="!auth.isProfessor || !title || !manifest"
-          @click="createLecture"
-        >
-          Add
-        </UButton>
+        <div class="grid md:grid-cols-3 gap-2">
+          <UInput v-model="title" placeholder="Lecture title" />
+          <UInput v-model="manifest" placeholder="Manifest / video URL" class="md:col-span-2" />
+        </div>
+
+        <div class="flex justify-end">
+          <UButton
+            color="primary"
+            :disabled="!title || !manifest"
+            @click="createLecture"
+          >
+            Add lecture
+          </UButton>
+        </div>
       </div>
-
-      <p v-if="!auth.isProfessor" class="text-xs opacity-60 mt-2">
-        Only professors can create lectures.
-      </p>
     </UCard>
 
-    <div class="grid gap-3">
-      <NuxtLink
+    <UAlert
+      v-else
+      icon="i-heroicons-information-circle"
+      title="Lectures are created by professors"
+      description="You can view all lectures once they are published."
+    />
+
+    <!-- Lecture list -->
+    <div v-if="lectures.length === 0" class="opacity-70 text-sm">
+      No lectures yet.
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <LectureCard
         v-for="l in lectures"
         :key="l.id"
-        :to="`/lectures/${l.id}`"
-        class="rounded-xl border border-slate-200 dark:border-slate-800 p-4 hover:bg-slate-50 dark:hover:bg-slate-900/40 transition"
-      >
-        <div class="font-medium">{{ l.title }}</div>
-        <div class="text-xs opacity-60">{{ l.created_at }}</div>
-      </NuxtLink>
+        :lecture="l"
+      />
     </div>
   </div>
 </template>
@@ -70,7 +84,7 @@ async function createLecture() {
     method: 'POST',
     body: {
       title: title.value,
-      manifest_url: manifest.value // no more null
+      manifest_url: manifest.value
     }
   })
 
