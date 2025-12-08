@@ -18,7 +18,7 @@
         </UButton>
 
         <p class="text-xs text-gray-500">
-          If registration is enabled in the realm, you can create an account from the Keycloak login screen.
+          You can create an account from the Keycloak login screen.
         </p>
       </div>
     </UCard>

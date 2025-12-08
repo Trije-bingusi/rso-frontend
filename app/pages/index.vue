@@ -14,8 +14,8 @@
       </h1>
 
       <p class="text-sm sm:text-base opacity-80">
-        A simple place for lectures, notes, and collaboration.
-        Everything you need for a smoother study flow — in one spot.
+        A simple place for lecture videos, notes, and collaboration.
+        Everything you need for a smoother study flow.
       </p>
 
       <p class="text-sm opacity-70">
@@ -51,7 +51,7 @@
           </li>
           <li class="flex gap-2">
             <UIcon name="i-heroicons-check-circle" />
-            Get AI-powered study help and summaries (coming soon).
+            Get AI-powered study help and summaries.
           </li>
         </ul>
       </div>
