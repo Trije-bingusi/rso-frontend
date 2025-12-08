@@ -1,59 +1,65 @@
 <template>
   <div class="space-y-6">
-    <div class="flex items-center justify-between">
-      <h2 class="text-xl font-semibold">Courses</h2>
-
-      <UButton
-        v-if="auth.isProfessor"
-        color="primary"
-        @click="openCreate = true"
-      >
-        New course
-      </UButton>
+    <div class="flex items-end justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold tracking-tight">Courses</h1>
+        <p class="text-xs opacity-60">
+          {{ auth.isProfessor ? 'Professor view' : 'Student view' }}
+        </p>
+      </div>
     </div>
 
-    <UCard>
-      <div v-if="pending" class="py-6">
-        <NuxtLoadingIndicator /> Loading...
-      </div>
+    <!-- Courses grid -->
+    <div v-if="pending" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <UCard v-for="i in 6" :key="i" class="h-28 animate-pulse" />
+    </div>
 
-      <div v-else-if="(courses?.length ?? 0) === 0" class="text-gray-500">
+    <template v-else>
+      <div
+        v-if="(courses?.length ?? 0) === 0"
+        class="text-sm opacity-70"
+      >
         No courses yet.
       </div>
 
-      <div v-else class="space-y-2">
-        <NuxtLink
-          v-for="c in courses"
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <CourseCard
+          v-for="c in (courses ?? [])"
           :key="c.id"
-          :to="`/courses/${c.id}`"
-          class="block rounded-lg px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800"
-        >
-          <div class="font-medium">{{ c.name }}</div>
-          <div class="text-xs text-gray-500">
-            {{ new Date(c.created_at).toLocaleString() }}
-          </div>
-        </NuxtLink>
+          :course="c"
+        />
+      </div>
+    </template>
+
+    <UCard v-if="auth.isProfessor">
+      <template #header>
+        <div class="flex items-center gap-2">
+          <UIcon name="i-heroicons-plus-circle" />
+          <div class="font-semibold">Create course</div>
+        </div>
+      </template>
+
+      <div class="space-y-3">
+        <UInput
+          v-model="newName"
+          placeholder="Course name"
+        />
+
+        <div class="flex justify-end">
+          <UButton
+            color="primary"
+            :disabled="!newName"
+            @click="createCourse"
+          >
+            Add course
+          </UButton>
+        </div>
+
+        <p class="text-xs opacity-60">
+          This is visible only to professors.
+        </p>
       </div>
     </UCard>
-
-    <UModal v-model="openCreate">
-      <UCard>
-        <template #header>
-          <div class="font-semibold">Create course</div>
-        </template>
-
-        <div class="space-y-3">
-          <UInput v-model="newName" placeholder="Course name" />
-
-          <div class="flex justify-end gap-2">
-            <UButton variant="ghost" @click="openCreate = false">Cancel</UButton>
-            <UButton color="primary" :disabled="!newName" @click="createCourse">
-              Create
-            </UButton>
-          </div>
-        </div>
-      </UCard>
-    </UModal>
   </div>
 </template>
 
@@ -63,7 +69,6 @@ import { useAuthStore } from '~/stores/auth'
 const auth = useAuthStore()
 const api = useApi()
 
-const openCreate = ref(false)
 const newName = ref('')
 
 const { data: courses, pending, refresh } = await useAsyncData(
@@ -73,12 +78,15 @@ const { data: courses, pending, refresh } = await useAsyncData(
 )
 
 async function createCourse() {
+  if (!auth.isProfessor) return
+  if (!newName.value) return
+
   await api('/api/courses', {
     method: 'POST',
     body: { name: newName.value }
   })
+
   newName.value = ''
-  openCreate.value = false
   await refresh()
 }
 </script>
