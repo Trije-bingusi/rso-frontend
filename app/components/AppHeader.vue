@@ -11,7 +11,7 @@
         </div>
         <div class="leading-tight">
           <div class="font-semibold tracking-tight">eUčilnica+</div>
-          <div class="text-[10px] opacity-60">Microservices learning portal</div>
+          <div class="text-[10px] opacity-60">Learning portal</div>
         </div>
       </NuxtLink>
 
