@@ -9,7 +9,7 @@
 const { $oidc } = useNuxtApp()
 
 onMounted(async () => {
-  await $oidc.handleCallback()
+  await $oidc?.handleCallback?.()
   await navigateTo('/courses')
 })
 </script>

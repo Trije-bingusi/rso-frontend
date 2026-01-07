@@ -1,0 +1,53 @@
+replicaCount: 2
+minReadySeconds: 10
+
+containerPort: 3000
+image: "<needs to be set>"
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 128Mi
+
+env:
+  - name: PORT
+    value: "3000"
+  - name: HOST
+    value: "0.0.0.0"
+
+  - name: NUXT_PUBLIC_API_BASE
+    value: "/api"
+  - name: NUXT_PUBLIC_KC_URL
+    value: "https://74.161.129.128.nip.io/keycloak"
+  - name: NUXT_PUBLIC_KC_REALM
+    value: "rso"
+  - name: NUXT_PUBLIC_KC_CLIENT_ID
+    value: "rso-frontend"
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  defaultHost: ""
+  className: nginx
+  hosts:
+    - host: ""
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    enabled: true
+    secretName: nip-tls
+
+probes:
+  liveness: { enabled: false }
+  readiness: { enabled: false }
+  startup: { enabled: false }
+
+migrations:
+  enabled: false

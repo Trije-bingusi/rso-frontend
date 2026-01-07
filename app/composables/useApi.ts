@@ -5,7 +5,7 @@ export const useApi = () => {
   const auth = useAuthStore()
 
   return $fetch.create({
-    baseURL: config.public.apiBase,
+    baseURL: config.public.apiBase, // '/api'
     onRequest({ options }) {
       if (auth.token) {
         options.headers = {

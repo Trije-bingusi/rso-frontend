@@ -73,14 +73,14 @@ const title = ref('')
 const manifest = ref('')
 
 async function load() {
-  lectures.value = await api(`/api/courses/${courseId.value}/lectures`)
+  lectures.value = await api(`/courses/${courseId.value}/lectures`)
 }
 
 async function createLecture() {
   if (!auth.isProfessor) return
   if (!title.value || !manifest.value) return
 
-  await api(`/api/courses/${courseId.value}/lectures`, {
+  await api(`/courses/${courseId.value}/lectures`, {
     method: 'POST',
     body: {
       title: title.value,

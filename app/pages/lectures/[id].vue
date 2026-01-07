@@ -76,7 +76,7 @@ const notes = ref<any[]>([])
 const content = ref('')
 
 async function loadLecture() {
-  lecture.value = await api(`/api/lectures/${lectureId.value}`)
+  lecture.value = await api(`/lectures/${lectureId.value}`)
 }
 
 async function loadNotes() {
@@ -84,13 +84,13 @@ async function loadNotes() {
     notes.value = []
     return
   }
-  notes.value = await api(`/api/lectures/${lectureId.value}/notes`)
+  notes.value = await api(`/lectures/${lectureId.value}/notes`)
 }
 
 async function createNote() {
   if (!auth.isStudent || !content.value) return
 
-  await api(`/api/lectures/${lectureId.value}/notes`, {
+  await api(`/lectures/${lectureId.value}/notes`, {
     method: 'POST',
     body: { content: content.value }
   })
