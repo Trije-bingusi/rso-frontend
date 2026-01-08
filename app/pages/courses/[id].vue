@@ -20,18 +20,16 @@
           <div class="font-semibold">Add lecture</div>
         </div>
 
-        <div class="grid md:grid-cols-3 gap-2">
-          <UInput v-model="title" placeholder="Lecture title" />
-          <UInput v-model="manifest" placeholder="Manifest / video URL" class="md:col-span-2" />
-        </div>
+        <UInput v-model="title" placeholder="Lecture title" />
 
         <div class="flex justify-end">
           <UButton
             color="primary"
-            :disabled="!title || !manifest"
+            :disabled="!title || creating"
+            :loading="creating"
             @click="createLecture"
           >
-            Add lecture
+            {{ creating ? 'Creating...' : 'Create lecture' }}
           </UButton>
         </div>
       </div>
@@ -65,32 +63,39 @@ import { useAuthStore } from '~/stores/auth'
 const auth = useAuthStore()
 const api = useApi()
 const route = useRoute()
+const config = useRuntimeConfig()
 
 const courseId = computed(() => String(route.params.id))
 
 const lectures = ref<any[]>([])
 const title = ref('')
-const manifest = ref('')
+const creating = ref(false)
 
 async function load() {
   lectures.value = await api(`/api/courses/${courseId.value}/lectures`)
 }
 
 async function createLecture() {
-  if (!auth.isProfessor) return
-  if (!title.value || !manifest.value) return
+  if (!auth.isProfessor || !title.value) return
 
-  await api(`/api/courses/${courseId.value}/lectures`, {
-    method: 'POST',
-    body: {
-      title: title.value,
-      manifest_url: manifest.value
-    }
-  })
+  try {
+    creating.value = true
+    await api(`/api/courses/${courseId.value}/lectures`, {
+      method: 'POST',
+      body: {
+        title: title.value,
+        manifest_url: '' // No video initially
+      }
+    })
 
-  title.value = ''
-  manifest.value = ''
-  await load()
+    title.value = ''
+    await load()
+  } catch (error) {
+    console.error('Failed to create lecture:', error)
+    alert('Failed to create lecture. Please try again.')
+  } finally {
+    creating.value = false
+  }
 }
 
 onMounted(load)

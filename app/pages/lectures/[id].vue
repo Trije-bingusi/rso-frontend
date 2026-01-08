@@ -18,12 +18,80 @@
           <LecturePlayer :src="lecture.manifest_url" />
         </UCard>
 
-        <UAlert
-          v-else
-          icon="i-heroicons-video-camera-slash"
-          title="No video available"
-          description="This lecture doesn't have a video source yet."
-        />
+        <UCard v-else-if="!lecture?.manifest_url && !auth.isProfessor">
+          <UAlert
+            icon="i-heroicons-video-camera-slash"
+            title="No video available"
+            description="This lecture doesn't have a video source yet."
+          />
+        </UCard>
+
+        <!-- Upload video (PROFESSORS ONLY) -->
+        <UCard v-if="auth.isProfessor">
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="font-semibold">Video Management</div>
+              <UButton
+                v-if="lecture?.manifest_url"
+                color="red"
+                variant="ghost"
+                size="xs"
+                @click="deleteVideo"
+                :loading="deleting"
+              >
+                Delete Video
+              </UButton>
+            </div>
+
+            <div v-if="!lecture?.manifest_url" class="space-y-2">
+              <label class="block text-sm font-medium">Upload video</label>
+              <input
+                ref="fileInput"
+                type="file"
+                accept="video/*"
+                @change="onFileSelected"
+                class="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 dark:file:bg-primary-900 dark:file:text-primary-300 dark:hover:file:bg-primary-800"
+              />
+              <p v-if="selectedFile" class="text-xs opacity-70">
+                Selected: {{ selectedFile.name }} ({{ formatFileSize(selectedFile.size) }})
+              </p>
+
+              <div v-if="uploadProgress > 0 && uploadProgress < 100" class="space-y-1">
+                <div class="flex justify-between text-xs opacity-70">
+                  <span>Uploading...</span>
+                  <span>{{ uploadProgress }}%</span>
+                </div>
+                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                  <div
+                    class="bg-primary-600 h-2 rounded-full transition-all"
+                    :style="{ width: `${uploadProgress}%` }"
+                  />
+                </div>
+              </div>
+
+              <div class="flex justify-end gap-2">
+                <UButton
+                  v-if="selectedFile"
+                  variant="ghost"
+                  @click="clearFile"
+                >
+                  Clear
+                </UButton>
+                <UButton
+                  color="primary"
+                  :disabled="!selectedFile || uploading"
+                  :loading="uploading"
+                  @click="uploadVideo"
+                >
+                  {{ uploading ? 'Uploading...' : 'Upload Video' }}
+                </UButton>
+              </div>
+            </div>
+            <div v-else class="text-sm opacity-70">
+              Video is already uploaded. Delete it to upload a new one.
+            </div>
+          </div>
+        </UCard>
       </div>
 
       <!-- Notes (STUDENTS ONLY) -->
@@ -68,12 +136,18 @@ import { useAuthStore } from '~/stores/auth'
 const auth = useAuthStore()
 const api = useApi()
 const route = useRoute()
+const config = useRuntimeConfig()
 
 const lectureId = computed(() => String(route.params.id))
 
 const lecture = ref<any | null>(null)
 const notes = ref<any[]>([])
 const content = ref('')
+const selectedFile = ref<File | null>(null)
+const fileInput = ref<HTMLInputElement | null>(null)
+const uploading = ref(false)
+const deleting = ref(false)
+const uploadProgress = ref(0)
 
 async function loadLecture() {
   lecture.value = await api(`/api/lectures/${lectureId.value}`)
@@ -96,6 +170,121 @@ async function createNote() {
   })
   content.value = ''
   await loadNotes()
+}
+
+function onFileSelected(event: Event) {
+  const target = event.target as HTMLInputElement
+  if (target.files && target.files.length > 0) {
+    selectedFile.value = target.files[0]
+  }
+}
+
+function clearFile() {
+  selectedFile.value = null
+  if (fileInput.value) {
+    fileInput.value.value = ''
+  }
+  uploadProgress.value = 0
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
+}
+
+async function uploadVideo() {
+
+  
+  if (!auth.isProfessor || !selectedFile.value || !lecture.value) {
+    console.log('Upload blocked - conditions not met')
+    return
+  }
+
+  try {
+    uploading.value = true
+    uploadProgress.value = 0
+
+    const formData = new FormData()
+    formData.append('video', selectedFile.value)
+
+    // Use XMLHttpRequest for upload progress tracking
+    const videoUpload = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          uploadProgress.value = Math.round((e.loaded / e.total) * 100)
+        }
+      })
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(JSON.parse(xhr.responseText))
+        } else {
+          reject(new Error(`Upload failed: ${xhr.statusText}`))
+        }
+      })
+
+      xhr.addEventListener('error', () => reject(new Error('Upload failed')))
+      xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')))
+
+      xhr.open('POST', `${config.public.apiBase}/api/uploads/${lectureId.value}`)
+      xhr.setRequestHeader('Authorization', `Bearer ${auth.token}`)
+      xhr.send(formData)
+    }) as any
+
+    console.log('uploadVideo called', { 
+      isProfessor: auth.isProfessor, 
+      hasFile: !!selectedFile.value, 
+      hasLecture: !!lecture.value 
+    })
+
+    // Update lecture with video URL
+    await api(`/api/lectures/${lectureId.value}`, {
+      method: 'PUT',
+      body: {
+        title: lecture.value.title,
+        manifest_url: videoUpload.blob_url
+      }
+    })
+
+    clearFile()
+    uploadProgress.value = 0
+    await loadLecture()
+  } catch (error) {
+    console.error('Failed to upload video:', error)
+    alert('Failed to upload video. Please try again.')
+  } finally {
+    uploading.value = false
+  }
+}
+
+async function deleteVideo() {
+  if (!auth.isProfessor || !lecture.value?.manifest_url) return
+  if (!confirm('Are you sure you want to delete this video?')) return
+
+  try {
+    deleting.value = true
+
+    // Update lecture to remove video URL
+    await api(`/api/lectures/${lectureId.value}`, {
+      method: 'PUT',
+      body: {
+        title: lecture.value.title,
+        manifest_url: ''
+      }
+    })
+
+    await loadLecture()
+  } catch (error) {
+    console.error('Failed to delete video:', error)
+    alert('Failed to delete video. Please try again.')
+  } finally {
+    deleting.value = false
+  }
 }
 
 onMounted(async () => {
