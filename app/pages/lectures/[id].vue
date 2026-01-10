@@ -92,85 +92,6 @@
             </div>
           </div>
         </UCard>
-
-        <!-- Transcription (PROFESSORS ONLY) -->
-        <UCard v-if="auth.isProfessor && lecture?.manifest_url">
-          <div class="space-y-3">
-            <div class="font-semibold">Transcription</div>
-            
-            <div v-if="transcription.status === 'none'" class="space-y-2">
-              <p class="text-sm opacity-70">Generate automatic transcription for this video.</p>
-              <UButton
-                color="primary"
-                variant="outline"
-                @click="startTranscription"
-                :loading="transcribing"
-              >
-                Generate Transcription
-              </UButton>
-            </div>
-
-            <div v-else-if="transcription.status === 'queued' || transcription.status === 'processing'" class="space-y-2">
-              <UAlert
-                icon="i-heroicons-clock"
-                title="Transcription in progress"
-                :description="`Status: ${transcription.status}`"
-              />
-              <UButton
-                color="gray"
-                variant="ghost"
-                size="xs"
-                @click="checkTranscriptionStatus"
-              >
-                Refresh Status
-              </UButton>
-            </div>
-
-            <div v-else-if="transcription.status === 'done'" class="space-y-2">
-              <UAlert
-                icon="i-heroicons-check-circle"
-                color="green"
-                title="Transcription complete"
-              />
-              <div class="flex gap-2">
-                <UButton
-                  color="primary"
-                  variant="outline"
-                  size="sm"
-                  @click="downloadTranscription('json')"
-                >
-                  Download JSON
-                </UButton>
-                <UButton
-                  color="primary"
-                  variant="outline"
-                  size="sm"
-                  @click="downloadTranscription('vtt')"
-                >
-                  Download VTT
-                </UButton>
-              </div>
-            </div>
-
-            <div v-else-if="transcription.status === 'failed'" class="space-y-2">
-              <UAlert
-                icon="i-heroicons-x-circle"
-                color="red"
-                title="Transcription failed"
-                :description="transcription.error || 'Unknown error'"
-              />
-              <UButton
-                color="primary"
-                variant="outline"
-                size="sm"
-                @click="startTranscription"
-                :loading="transcribing"
-              >
-                Retry
-              </UButton>
-            </div>
-          </div>
-        </UCard>
       </div>
 
       <!-- Notes (STUDENTS ONLY) -->
@@ -215,6 +136,7 @@ import { useAuthStore } from '~/stores/auth'
 const auth = useAuthStore()
 const api = useApi()
 const route = useRoute()
+const config = useRuntimeConfig()
 
 const lectureId = computed(() => String(route.params.id))
 
@@ -226,14 +148,6 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const uploading = ref(false)
 const deleting = ref(false)
 const uploadProgress = ref(0)
-const transcribing = ref(false)
-const transcription = ref({
-  status: 'none',
-  job_id: null as string | null,
-  json_url: null as string | null,
-  vtt_url: null as string | null,
-  error: null as string | null
-})
 
 async function loadLecture() {
   lecture.value = await api(`/lectures/${lectureId.value}`)
@@ -371,53 +285,6 @@ async function deleteVideo() {
   } finally {
     deleting.value = false
   }
-}
-
-async function checkTranscriptionStatus() {
-  if (!auth.isProfessor || !lectureId.value) return
-
-  try {
-    const result = await api(`/api/lectures/${lectureId.value}/transcription`)
-    transcription.value = {
-      status: result.status || 'none',
-      job_id: result.job_id || null,
-      json_url: result.json_url || null,
-      vtt_url: result.vtt_url || null,
-      error: result.error || null
-    }
-  } catch (error) {
-    console.error('Failed to check transcription status:', error)
-  }
-}
-
-async function startTranscription() {
-  if (!auth.isProfessor || !lectureId.value) return
-  console.log('Starting transcription for lecture', lectureId.value)
-  try {
-    transcribing.value = true
-    console.log('Starting transcription for lecture', lectureId.value)
-
-    await api(`/api/lectures/${lectureId.value}/transcribe`, {
-      method: 'POST',
-      body: { language: 'sl' }
-    })
-
-    // Check status after starting
-    await checkTranscriptionStatus()
-  } catch (error) {
-    console.error('Failed to start transcription:', error)
-    alert('Failed to start transcription. Please try again.')
-  } finally {
-    transcribing.value = false
-  }
-}
-
-function downloadTranscription(type: 'json' | 'vtt') {
-  const url = type === 'json' ? transcription.value.json_url : transcription.value.vtt_url
-  if (!url) return
-
-  // Open in new tab to trigger download
-  window.open(url, '_blank')
 }
 
 onMounted(async () => {
