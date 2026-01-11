@@ -14,11 +14,11 @@
     <div class="grid lg:grid-cols-3 gap-6">
       <!-- Video -->
       <div class="lg:col-span-2 space-y-4">
-        <UCard v-if="lecture?.manifest_url">
-          <LecturePlayer :src="lecture.manifest_url" />
+        <UCard v-if="videoUrl">
+          <LecturePlayer :src="videoUrl" />
         </UCard>
 
-        <UCard v-else-if="!lecture?.manifest_url && !auth.isProfessor">
+        <UCard v-else-if="!videoUrl && !auth.isProfessor && !loadingVideo">
           <UAlert
             icon="i-heroicons-video-camera-slash"
             title="No video available"
@@ -26,24 +26,18 @@
           />
         </UCard>
 
+        <UCard v-else-if="loadingVideo">
+          <div class="flex items-center justify-center py-8">
+            <div class="text-sm opacity-70">Loading video...</div>
+          </div>
+        </UCard>
+
         <!-- Upload video (PROFESSORS ONLY) -->
         <UCard v-if="auth.isProfessor">
           <div class="space-y-3">
-            <div class="flex items-center justify-between">
-              <div class="font-semibold">Video Management</div>
-              <UButton
-                v-if="lecture?.manifest_url"
-                color="red"
-                variant="ghost"
-                size="xs"
-                @click="deleteVideo"
-                :loading="deleting"
-              >
-                Delete Video
-              </UButton>
-            </div>
+            <div class="font-semibold">Video Management</div>
 
-            <div v-if="!lecture?.manifest_url" class="space-y-2">
+            <div v-if="!videoUrl" class="space-y-2">
               <label class="block text-sm font-medium">Upload video</label>
               <input
                 ref="fileInput"
@@ -94,7 +88,8 @@
         </UCard>
 
         <!-- Transcription (PROFESSORS ONLY) -->
-        <UCard v-if="auth.isProfessor && lecture?.manifest_url">
+        <!-- COMMENTED OUT FOR NOW
+        <UCard v-if="auth.isProfessor && videoUrl">
           <div class="space-y-3">
             <div class="font-semibold">Transcription</div>
             
@@ -171,6 +166,7 @@
             </div>
           </div>
         </UCard>
+        -->
       </div>
 
       <!-- Notes (STUDENTS ONLY) -->
@@ -225,16 +221,18 @@ const content = ref('')
 const selectedFile = ref<File | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const uploading = ref(false)
-const deleting = ref(false)
 const uploadProgress = ref(0)
-const transcribing = ref(false)
-const transcription = ref({
-  status: 'none',
-  job_id: null as string | null,
-  json_url: null as string | null,
-  vtt_url: null as string | null,
-  error: null as string | null
-})
+const videoUrl = ref<string | null>(null)
+const loadingVideo = ref(false)
+// TRANSCRIPTION COMMENTED OUT FOR NOW
+// const transcribing = ref(false)
+// const transcription = ref({
+//   status: 'none',
+//   job_id: null as string | null,
+//   json_url: null as string | null,
+//   vtt_url: null as string | null,
+//   error: null as string | null
+// })
 
 async function loadLecture() {
   lecture.value = await api(`/lectures/${lectureId.value}`)
@@ -246,6 +244,22 @@ async function loadNotes() {
     return
   }
   notes.value = await api(`/lectures/${lectureId.value}/notes`)
+}
+
+async function loadVideo() {
+  try {
+    loadingVideo.value = true
+    const result = await api(`/api/lectures/${lectureId.value}/videos`)
+    videoUrl.value = result.videoUrl
+  } catch (error: any) {
+    // 404 means no video exists, which is fine
+    if (error?.status !== 404) {
+      console.error('Failed to load video:', error)
+    }
+    videoUrl.value = null
+  } finally {
+    loadingVideo.value = false
+  }
 }
 
 async function createNote() {
@@ -283,149 +297,141 @@ function formatFileSize(bytes: number): string {
 }
 
 async function uploadVideo() {
-
-  
-  if (!auth.isProfessor || !selectedFile.value || !lecture.value) {
-    console.log('Upload blocked - conditions not met')
-    return
-  }
+  if (!selectedFile.value || !auth.isProfessor) return
 
   try {
     uploading.value = true
     uploadProgress.value = 0
 
-    const formData = new FormData()
-    formData.append('video', selectedFile.value)
-
-    // Use XMLHttpRequest for upload progress tracking
-    const videoUpload = await new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest()
-
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-          uploadProgress.value = Math.round((e.loaded / e.total) * 100)
-        }
-      })
-
-      xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve(JSON.parse(xhr.responseText))
-        } else {
-          reject(new Error(`Upload failed: ${xhr.statusText}`))
-        }
-      })
-
-      xhr.addEventListener('error', () => reject(new Error('Upload failed')))
-      xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')))
-
-      xhr.open('POST', `${config.public.apiBase}/api/uploads/${lectureId.value}`)
-      xhr.setRequestHeader('Authorization', `Bearer ${auth.token}`)
-      xhr.send(formData)
-    }) as any
-
-    console.log('uploadVideo called', { 
-      isProfessor: auth.isProfessor, 
-      hasFile: !!selectedFile.value, 
-      hasLecture: !!lecture.value 
+    // Step 1: Get SAS URL from the videos service
+    const { uploadUrl, videoId } = await api(`/api/lectures/${lectureId.value}/videos`, {
+      method: 'POST'
     })
 
-    // Update lecture with video URL
-    await api(`/api/lectures/${lectureId.value}`, {
-      method: 'PUT',
-      body: {
-        title: lecture.value.title,
-        manifest_url: videoUpload.blob_url
+    // Step 2: Upload the file directly to Azure Blob Storage using the SAS URL
+    const xhr = new XMLHttpRequest()
+
+    // Track upload progress
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        uploadProgress.value = Math.round((e.loaded / e.total) * 100)
       }
     })
 
-    clearFile()
-    uploadProgress.value = 0
-    await loadLecture()
+    // Handle upload completion
+    await new Promise<void>((resolve, reject) => {
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve()
+        } else {
+          reject(new Error(`Upload failed with status ${xhr.status}`))
+        }
+      })
+
+      xhr.addEventListener('error', () => {
+        reject(new Error('Upload failed'))
+      })
+
+      xhr.addEventListener('abort', () => {
+        reject(new Error('Upload cancelled'))
+      })
+
+      // Upload to Azure Blob Storage
+      xhr.open('PUT', uploadUrl, true)
+      xhr.setRequestHeader('x-ms-blob-type', 'BlockBlob')
+      xhr.setRequestHeader('x-ms-blob-content-type', selectedFile.value!.type || 'video/mp4')
+      xhr.send(selectedFile.value)
+    })
+
+    // Step 3: Poll backend to verify upload and get video URL
+    let attempts = 0
+    const maxAttempts = 30 // Poll for up to 30 seconds
+    
+    while (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      try {
+        const videoStatus = await api(`/api/lectures/${lectureId.value}/videos`)
+        if (videoStatus.videoId === videoId && videoStatus.videoUrl) {
+          // Upload successful, update video URL
+          videoUrl.value = videoStatus.videoUrl
+          clearFile()
+          uploadProgress.value = 100
+          return
+        }
+      } catch (err) {
+        // Video not ready yet, continue polling
+      }
+      
+      attempts++
+    }
+
+    throw new Error('Upload verification timeout')
+
   } catch (error) {
     console.error('Failed to upload video:', error)
     alert('Failed to upload video. Please try again.')
+    uploadProgress.value = 0
   } finally {
     uploading.value = false
   }
 }
 
-async function deleteVideo() {
-  if (!auth.isProfessor || !lecture.value?.manifest_url) return
-  if (!confirm('Are you sure you want to delete this video?')) return
+// TRANSCRIPTION FUNCTIONS COMMENTED OUT FOR NOW
+// async function checkTranscriptionStatus() {
+//   if (!auth.isProfessor || !lectureId.value) return
 
-  try {
-    deleting.value = true
+//   try {
+//     const result = await api(`/api/lectures/${lectureId.value}/transcription`)
+//     transcription.value = {
+//       status: result.status || 'none',
+//       job_id: result.job_id || null,
+//       json_url: result.json_url || null,
+//       vtt_url: result.vtt_url || null,
+//       error: result.error || null
+//     }
+//   } catch (error) {
+//     console.error('Failed to check transcription status:', error)
+//   }
+// }
 
-    // Update lecture to remove video URL
-    await api(`/api/lectures/${lectureId.value}`, {
-      method: 'PUT',
-      body: {
-        title: lecture.value.title,
-        manifest_url: ''
-      }
-    })
+// async function startTranscription() {
+//   if (!auth.isProfessor || !lectureId.value) return
+//   console.log('Starting transcription for lecture', lectureId.value)
+//   try {
+//     transcribing.value = true
+//     console.log('Starting transcription for lecture', lectureId.value)
 
-    await loadLecture()
-  } catch (error) {
-    console.error('Failed to delete video:', error)
-    alert('Failed to delete video. Please try again.')
-  } finally {
-    deleting.value = false
-  }
-}
+//     await api(`/api/lectures/${lectureId.value}/transcribe`, {
+//       method: 'POST',
+//       body: { language: 'sl' }
+//     })
 
-async function checkTranscriptionStatus() {
-  if (!auth.isProfessor || !lectureId.value) return
+//     // Check status after starting
+//     await checkTranscriptionStatus()
+//   } catch (error) {
+//     console.error('Failed to start transcription:', error)
+//     alert('Failed to start transcription. Please try again.')
+//   } finally {
+//     transcribing.value = false
+//   }
+// }
 
-  try {
-    const result = await api(`/api/lectures/${lectureId.value}/transcription`)
-    transcription.value = {
-      status: result.status || 'none',
-      job_id: result.job_id || null,
-      json_url: result.json_url || null,
-      vtt_url: result.vtt_url || null,
-      error: result.error || null
-    }
-  } catch (error) {
-    console.error('Failed to check transcription status:', error)
-  }
-}
+// function downloadTranscription(type: 'json' | 'vtt') {
+//   const url = type === 'json' ? transcription.value.json_url : transcription.value.vtt_url
+//   if (!url) return
 
-async function startTranscription() {
-  if (!auth.isProfessor || !lectureId.value) return
-  console.log('Starting transcription for lecture', lectureId.value)
-  try {
-    transcribing.value = true
-    console.log('Starting transcription for lecture', lectureId.value)
-
-    await api(`/api/lectures/${lectureId.value}/transcribe`, {
-      method: 'POST',
-      body: { language: 'sl' }
-    })
-
-    // Check status after starting
-    await checkTranscriptionStatus()
-  } catch (error) {
-    console.error('Failed to start transcription:', error)
-    alert('Failed to start transcription. Please try again.')
-  } finally {
-    transcribing.value = false
-  }
-}
-
-function downloadTranscription(type: 'json' | 'vtt') {
-  const url = type === 'json' ? transcription.value.json_url : transcription.value.vtt_url
-  if (!url) return
-
-  // Open in new tab to trigger download
-  window.open(url, '_blank')
-}
+//   // Open in new tab to trigger download
+//   window.open(url, '_blank')
+// }
 
 onMounted(async () => {
   await loadLecture()
+  await loadVideo()
   await loadNotes()
-  if (auth.isProfessor && lecture.value?.manifest_url) {
-    await checkTranscriptionStatus()
-  }
+  // TRANSCRIPTION COMMENTED OUT FOR NOW
+  // if (auth.isProfessor && videoUrl.value) {
+  //   await checkTranscriptionStatus()
+  // }
 })
 </script>
