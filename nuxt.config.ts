@@ -13,9 +13,27 @@ export default defineNuxtConfig({
 
   nitro: {
     routeRules: {
-      '/api/**': {
-        proxy: `${process.env.NUXT_API_PROXY_TARGET || 'http://localhost:8081'}/api/**`
-      }
+      '/api/courses/**': {
+        proxy: `${process.env.NUXT_API_PROXY_TARGET || 'http://localhost:8081'}/api/courses/**`
+      },
+      '/api/lectures/**': {
+        proxy: `${process.env.NUXT_API_PROXY_TARGET || 'http://localhost:8081'}/api/lectures/**`
+      },
+      '/api/users/**': {
+        proxy: `${process.env.NUXT_API_PROXY_TARGET || 'http://localhost:8081'}/api/users/**`
+      },
+      '/api/forum/**': {
+        proxy: `${process.env.NUXT_API_PROXY_TARGET || 'http://localhost:8081'}/api/forum/**`
+      },
+      '/api/uploads/**': {
+        proxy: `${process.env.NUXT_API_PROXY_TARGET || 'http://localhost:8081'}/api/uploads/**`
+      },
+      '/api/videos/**': {
+        proxy: `${process.env.NUXT_API_PROXY_TARGET || 'http://localhost:8081'}/api/videos/**`
+      },
+      '/api/transcriptions/**': {
+        proxy: `${process.env.NUXT_API_PROXY_TARGET || 'http://localhost:8081'}/api/transcriptions/**`
+      },
     }
   },
 
