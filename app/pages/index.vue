@@ -43,15 +43,11 @@
           </li>
           <li class="flex gap-2">
             <UIcon name="i-heroicons-check-circle" />
-            Search content across lectures and notes.
-          </li>
-          <li class="flex gap-2">
-            <UIcon name="i-heroicons-check-circle" />
             Ask questions and discuss topics with others.
           </li>
           <li class="flex gap-2">
             <UIcon name="i-heroicons-check-circle" />
-            Get AI-powered study help and summaries.
+            Get AI-powered summaries.
           </li>
         </ul>
       </div>
