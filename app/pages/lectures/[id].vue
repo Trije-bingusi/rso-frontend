@@ -15,7 +15,7 @@
       <!-- Video -->
       <div class="lg:col-span-2 space-y-4">
         <UCard v-if="videoUrl">
-          <LecturePlayer :src="videoUrl" />
+          <LecturePlayer :src="videoUrl" :subtitles="transcriptionUrls.vtt" />
         </UCard>
 
         <UCard v-else-if="!videoUrl && !auth.isProfessor && !loadingVideo">
@@ -87,86 +87,83 @@
           </div>
         </UCard>
 
-        <!-- Transcription (PROFESSORS ONLY) -->
-        <!-- COMMENTED OUT FOR NOW
-        <UCard v-if="auth.isProfessor && videoUrl">
+        <!-- Summary Section -->
+        <UCard v-if="videoUrl && (summaryText || loadingSummary)">
+          <div class="space-y-3">
+            <div class="flex items-center gap-2">
+              <span class="text-base font-semibold">Lecture Summary</span>
+              <UBadge color="blue" variant="subtle">AI Generated</UBadge>
+            </div>
+            
+            <div v-if="loadingSummary" class="text-center py-4">
+              <div class="text-sm opacity-70">Loading summary...</div>
+            </div>
+            
+            <div v-else-if="summaryText" class="prose prose-sm dark:prose-invert max-w-none">
+              <p class="text-sm leading-relaxed whitespace-pre-wrap">{{ summaryText }}</p>
+            </div>
+          </div>
+        </UCard>
+
+        <!-- Transcription Section -->
+        <UCard v-if="videoUrl">
           <div class="space-y-3">
             <div class="font-semibold">Transcription</div>
-            
-            <div v-if="transcription.status === 'none'" class="space-y-2">
-              <p class="text-sm opacity-70">Generate automatic transcription for this video.</p>
-              <UButton
-                color="primary"
-                variant="outline"
-                @click="startTranscription"
-                :loading="transcribing"
-              >
-                Generate Transcription
-              </UButton>
+
+            <!-- Loading transcription -->
+            <div v-if="loadingTranscription" class="text-center py-4">
+              <div class="text-sm opacity-70">Checking for transcription...</div>
             </div>
 
-            <div v-else-if="transcription.status === 'queued' || transcription.status === 'processing'" class="space-y-2">
-              <UAlert
-                icon="i-heroicons-clock"
-                title="Transcription in progress"
-                :description="`Status: ${transcription.status}`"
-              />
-              <UButton
-                color="gray"
-                variant="ghost"
-                size="xs"
-                @click="checkTranscriptionStatus"
-              >
-                Refresh Status
-              </UButton>
-            </div>
-
-            <div v-else-if="transcription.status === 'done'" class="space-y-2">
+            <!-- Transcription available -->
+            <div v-else-if="transcriptionAvailable" class="space-y-2">
               <UAlert
                 icon="i-heroicons-check-circle"
                 color="green"
-                title="Transcription complete"
+                title="Subtitles enabled"
+                description="Transcription is available as subtitles in the video player."
               />
-              <div class="flex gap-2">
+            </div>
+
+            <!-- Job in progress -->
+            <div v-else-if="transcriptionJob" class="space-y-2">
+              <UAlert
+                icon="i-heroicons-clock"
+                color="blue"
+                title="Transcription in progress"
+                :description="`Status: ${transcriptionJob.status}`"
+              />
+              <div class="flex justify-end">
                 <UButton
-                  color="primary"
-                  variant="outline"
                   size="sm"
-                  @click="downloadTranscription('json')"
+                  variant="ghost"
+                  @click="checkTranscriptionJob"
+                  :loading="checkingJob"
                 >
-                  Download JSON
-                </UButton>
-                <UButton
-                  color="primary"
-                  variant="outline"
-                  size="sm"
-                  @click="downloadTranscription('vtt')"
-                >
-                  Download VTT
+                  Refresh Status
                 </UButton>
               </div>
             </div>
 
-            <div v-else-if="transcription.status === 'failed'" class="space-y-2">
-              <UAlert
-                icon="i-heroicons-x-circle"
-                color="red"
-                title="Transcription failed"
-                :description="transcription.error || 'Unknown error'"
-              />
-              <UButton
-                color="primary"
-                variant="outline"
-                size="sm"
-                @click="startTranscription"
-                :loading="transcribing"
-              >
-                Retry
-              </UButton>
+            <!-- No transcription - show generate button -->
+            <div v-else class="space-y-2">
+              <p class="text-sm opacity-70">
+                No transcription available for this lecture.
+              </p>
+              <div class="flex justify-end">
+                <UButton
+                  color="primary"
+                  @click="generateTranscription"
+                  :loading="generatingTranscription"
+                  icon="i-heroicons-language"
+                >
+                  Generate Transcription
+                </UButton>
+              </div>
             </div>
           </div>
         </UCard>
-        -->
+
       </div>
 
       <!-- Notes (STUDENTS ONLY) -->
@@ -224,15 +221,18 @@ const uploading = ref(false)
 const uploadProgress = ref(0)
 const videoUrl = ref<string | null>(null)
 const loadingVideo = ref(false)
-// TRANSCRIPTION COMMENTED OUT FOR NOW
-// const transcribing = ref(false)
-// const transcription = ref({
-//   status: 'none',
-//   job_id: null as string | null,
-//   json_url: null as string | null,
-//   vtt_url: null as string | null,
-//   error: null as string | null
-// })
+
+// Summary state
+const summaryText = ref<string | null>(null)
+const loadingSummary = ref(false)
+
+// Transcription state
+const loadingTranscription = ref(false)
+const transcriptionAvailable = ref(false)
+const transcriptionUrls = ref<{ json: string | null; vtt: string | null }>({ json: null, vtt: null })
+const transcriptionJob = ref<{ job_id: string; status: string } | null>(null)
+const generatingTranscription = ref(false)
+const checkingJob = ref(false)
 
 async function loadLecture() {
   lecture.value = await api(`/lectures/${lectureId.value}`)
@@ -259,6 +259,23 @@ async function loadVideo() {
     videoUrl.value = null
   } finally {
     loadingVideo.value = false
+  }
+}
+
+// Load summary for the lecture
+async function loadSummary() {
+  try {
+    loadingSummary.value = true
+    const result = await api(`/api/lectures/${lectureId.value}/summary`)
+    summaryText.value = result.summary
+  } catch (error: any) {
+    // 404 means no summary exists yet, which is fine
+    if (error?.status !== 404) {
+      console.error('Failed to load summary:', error)
+    }
+    summaryText.value = null
+  } finally {
+    loadingSummary.value = false
   }
 }
 
@@ -377,61 +394,166 @@ async function uploadVideo() {
   }
 }
 
-// TRANSCRIPTION FUNCTIONS COMMENTED OUT FOR NOW
-// async function checkTranscriptionStatus() {
-//   if (!auth.isProfessor || !lectureId.value) return
+// Check if transcription exists for this lecture
+async function checkTranscription() {
+  if (!videoUrl.value) return
+  
+  try {
+    loadingTranscription.value = true
+    const result = await api(`/api/lectures/${lectureId.value}/transcription`)
+    
+    transcriptionAvailable.value = true
+    transcriptionUrls.value = {
+      json: result.transcript_json_url,
+      vtt: result.transcript_vtt_url
+    }
+    transcriptionJob.value = null
+  } catch (error: any) {
+    // 404 means no transcription exists yet
+    if (error?.status === 404) {
+      transcriptionAvailable.value = false
+      transcriptionUrls.value = { json: null, vtt: null }
+    } else {
+      console.error('Failed to check transcription:', error)
+    }
+  } finally {
+    loadingTranscription.value = false
+  }
+}
 
-//   try {
-//     const result = await api(`/api/lectures/${lectureId.value}/transcription`)
-//     transcription.value = {
-//       status: result.status || 'none',
-//       job_id: result.job_id || null,
-//       json_url: result.json_url || null,
-//       vtt_url: result.vtt_url || null,
-//       error: result.error || null
-//     }
-//   } catch (error) {
-//     console.error('Failed to check transcription status:', error)
-//   }
-// }
+// Generate a new transcription
+async function generateTranscription() {
+  if (!videoUrl.value) return
+  
+  try {
+    generatingTranscription.value = true
+    
+    // First get the video details to get blob name
+    const videoData = await api(`/api/lectures/${lectureId.value}/videos`)
+    
+    const blobName = extractBlobName(videoData.videoUrl)
+    console.log('Generating transcription with blob name:', blobName)
+    
+    // Create transcription job
+    const result = await api('/api/transcriptions', {
+      method: 'POST',
+      body: {
+        lecture_id: lectureId.value,
+        video_url: videoData.videoUrl,
+        video_blob_name: blobName,
+        language: 'sl'
+      }
+    })
+    
+    console.log('Transcription job created:', result)
+    
+    transcriptionJob.value = {
+      job_id: result.job_id,
+      status: result.status
+    }
+    
+    // Start polling for job completion
+    pollTranscriptionJob(result.job_id)
+  } catch (error: any) {
+    console.error('Failed to generate transcription:', error)
+    console.error('Error details:', {
+      status: error?.status,
+      statusText: error?.statusText,
+      data: error?.data
+    })
+    alert(`Failed to generate transcription: ${error?.data?.error || error?.message || 'Unknown error'}`)
+  } finally {
+    generatingTranscription.value = false
+  }
+}
 
-// async function startTranscription() {
-//   if (!auth.isProfessor || !lectureId.value) return
-//   console.log('Starting transcription for lecture', lectureId.value)
-//   try {
-//     transcribing.value = true
-//     console.log('Starting transcription for lecture', lectureId.value)
+// Extract blob name from SAS URL
+function extractBlobName(sasUrl: string): string {
+  try {
+    const url = new URL(sasUrl)
+    const pathParts = url.pathname.split('/')
+    // Last part is the blob name (e.g., /container/blobname.mp4)
+    return pathParts[pathParts.length - 1]
+  } catch (error) {
+    console.error('Failed to extract blob name:', error)
+    return ''
+  }
+}
 
-//     await api(`/api/lectures/${lectureId.value}/transcribe`, {
-//       method: 'POST',
-//       body: { language: 'sl' }
-//     })
+// Check transcription job status
+async function checkTranscriptionJob() {
+  if (!transcriptionJob.value) return
+  
+  try {
+    checkingJob.value = true
+    const result = await api(`/api/transcriptions/${transcriptionJob.value.job_id}`)
+    
+    transcriptionJob.value = {
+      job_id: result.job_id,
+      status: result.status
+    }
+    
+    // If done, load the transcription URLs
+    if (result.status === 'done') {
+      await checkTranscription()
+    }
+  } catch (error: any) {
+    // If job not found (404), clear the job reference
+    if (error?.status === 404) {
+      transcriptionJob.value = null
+    } else {
+      console.error('Failed to check job status:', error)
+    }
+  } finally {
+    checkingJob.value = false
+  }
+}
 
-//     // Check status after starting
-//     await checkTranscriptionStatus()
-//   } catch (error) {
-//     console.error('Failed to start transcription:', error)
-//     alert('Failed to start transcription. Please try again.')
-//   } finally {
-//     transcribing.value = false
-//   }
-// }
-
-// function downloadTranscription(type: 'json' | 'vtt') {
-//   const url = type === 'json' ? transcription.value.json_url : transcription.value.vtt_url
-//   if (!url) return
-
-//   // Open in new tab to trigger download
-//   window.open(url, '_blank')
-// }
+// Poll transcription job until complete
+function pollTranscriptionJob(jobId: string) {
+  const pollInterval = setInterval(async () => {
+    if (!transcriptionJob.value) {
+      clearInterval(pollInterval)
+      return
+    }
+    
+    try {
+      const result = await api(`/api/transcriptions/${jobId}`)
+      transcriptionJob.value = {
+        job_id: result.job_id,
+        status: result.status
+      }
+      
+      // Stop polling if done or failed
+      if (result.status === 'done' || result.status === 'failed') {
+        clearInterval(pollInterval)
+        if (result.status === 'done') {
+          await checkTranscription()
+        }
+      }
+    } catch (error: any) {
+      // If job not found (404), stop polling and clear job
+      if (error?.status === 404) {
+        clearInterval(pollInterval)
+        transcriptionJob.value = null
+      } else {
+        console.error('Failed to poll job status:', error)
+      }
+    }
+  }, 5000) // Poll every 5 seconds
+}
 
 onMounted(async () => {
   await loadLecture()
   await loadVideo()
   await loadNotes()
-  // TRANSCRIPTION COMMENTED OUT FOR NOW
-  // if (auth.isProfessor && videoUrl.value) {
-  //   await checkTranscriptionStatus()
-  // }
+  
+  // Load summary and check for existing transcription if video exists
+  if (videoUrl.value) {
+    await Promise.all([
+      loadSummary(),
+      checkTranscription()
+    ])
+  }
 })
 </script>
