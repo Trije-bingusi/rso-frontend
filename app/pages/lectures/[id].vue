@@ -1,7 +1,9 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-8">
     <div class="flex items-center justify-between">
-      <NuxtLink to="/courses" class="text-sm opacity-70">← Back to courses</NuxtLink>
+      <NuxtLink :to="backToCourseUrl" class="text-sm opacity-70 hover:opacity-100 transition">
+        ← Back to course
+      </NuxtLink>
       <RoleBadge />
     </div>
 
@@ -11,44 +13,53 @@
       </h1>
     </div>
 
-    <div class="grid lg:grid-cols-3 gap-6">
-      <!-- Video -->
-      <div class="lg:col-span-2 space-y-4">
-        <UCard v-if="videoUrl">
-          <LecturePlayer :src="videoUrl" :subtitles="transcriptionUrls.vtt" />
-        </UCard>
+    <!-- Split view (Video/Content | Notes) -->
+    <div class="grid lg:grid-cols-[1fr_1px_420px] gap-8 items-start">
+      <!-- LEFT: Video + tools -->
+      <div class="space-y-6">
+        <!-- Video -->
+        <div class="space-y-4">
+          <UCard v-if="videoUrl">
+            <LecturePlayer :src="videoUrl" :subtitles="transcriptionUrls.vtt" />
+          </UCard>
 
-        <UCard v-else-if="!videoUrl && !auth.isProfessor && !loadingVideo">
-          <UAlert
-            icon="i-heroicons-video-camera-slash"
-            title="No video available"
-            description="This lecture doesn't have a video source yet."
-          />
-        </UCard>
+          <UCard v-else-if="!videoUrl && !auth.isProfessor && !loadingVideo">
+            <UAlert
+              icon="i-heroicons-video-camera-slash"
+              title="No video available"
+              description="This lecture doesn't have a video source yet."
+            />
+          </UCard>
 
-        <UCard v-else-if="loadingVideo">
-          <div class="flex items-center justify-center py-8">
-            <div class="text-sm opacity-70">Loading video...</div>
-          </div>
-        </UCard>
+          <UCard v-else-if="loadingVideo">
+            <div class="flex items-center justify-center py-10">
+              <div class="text-sm opacity-70">Loading video...</div>
+            </div>
+          </UCard>
+        </div>
 
         <!-- Upload video (PROFESSORS ONLY) -->
         <UCard v-if="auth.isProfessor">
-          <div class="space-y-3">
-            <div class="font-semibold">Video Management</div>
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <div class="font-semibold">Video management</div>
+              <div class="text-xs opacity-60">Professors only</div>
+            </div>
 
-            <div v-if="!videoUrl" class="space-y-2">
-              <label class="block text-sm font-medium">Upload video</label>
-              <input
-                ref="fileInput"
-                type="file"
-                accept="video/*"
-                @change="onFileSelected"
-                class="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 dark:file:bg-primary-900 dark:file:text-primary-300 dark:hover:file:bg-primary-800"
-              />
-              <p v-if="selectedFile" class="text-xs opacity-70">
-                Selected: {{ selectedFile.name }} ({{ formatFileSize(selectedFile.size) }})
-              </p>
+            <div v-if="!videoUrl" class="space-y-3">
+              <div class="space-y-2">
+                <label class="block text-sm font-medium">Upload video</label>
+                <input
+                  ref="fileInput"
+                  type="file"
+                  accept="video/*"
+                  @change="onFileSelected"
+                  class="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 dark:file:bg-primary-900 dark:file:text-primary-300 dark:hover:file:bg-primary-800"
+                />
+                <p v-if="selectedFile" class="text-xs opacity-70">
+                  Selected: {{ selectedFile.name }} ({{ formatFileSize(selectedFile.size) }})
+                </p>
+              </div>
 
               <div v-if="uploadProgress > 0 && uploadProgress < 100" class="space-y-1">
                 <div class="flex justify-between text-xs opacity-70">
@@ -77,12 +88,13 @@
                   :loading="uploading"
                   @click="uploadVideo"
                 >
-                  {{ uploading ? 'Uploading...' : 'Upload Video' }}
+                  {{ uploading ? 'Uploading...' : 'Upload video' }}
                 </UButton>
               </div>
             </div>
+
             <div v-else class="text-sm opacity-70">
-              Video is already uploaded. Delete it to upload a new one.
+              Video is already uploaded.
             </div>
           </div>
         </UCard>
@@ -91,14 +103,14 @@
         <UCard v-if="videoUrl && (summaryText || loadingSummary)">
           <div class="space-y-3">
             <div class="flex items-center gap-2">
-              <span class="text-base font-semibold">Lecture Summary</span>
+              <span class="text-base font-semibold">Lecture summary</span>
               <UBadge color="blue" variant="subtle">AI Generated</UBadge>
             </div>
-            
-            <div v-if="loadingSummary" class="text-center py-4">
+
+            <div v-if="loadingSummary" class="text-center py-5">
               <div class="text-sm opacity-70">Loading summary...</div>
             </div>
-            
+
             <div v-else-if="summaryText" class="prose prose-sm dark:prose-invert max-w-none">
               <p class="text-sm leading-relaxed whitespace-pre-wrap">{{ summaryText }}</p>
             </div>
@@ -108,10 +120,13 @@
         <!-- Transcription Section -->
         <UCard v-if="videoUrl">
           <div class="space-y-3">
-            <div class="font-semibold">Transcription</div>
+            <div class="flex items-center justify-between">
+              <div class="font-semibold">Transcription</div>
+              <div class="text-xs opacity-60">Subtitles</div>
+            </div>
 
             <!-- Loading transcription -->
-            <div v-if="loadingTranscription" class="text-center py-4">
+            <div v-if="loadingTranscription" class="text-center py-5">
               <div class="text-sm opacity-70">Checking for transcription...</div>
             </div>
 
@@ -163,13 +178,21 @@
             </div>
           </div>
         </UCard>
-
       </div>
 
-      <!-- Notes (STUDENTS ONLY) -->
-      <div v-if="auth.isStudent" class="space-y-4">
-        <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold">Your notes</h2>
+      <!-- divider -->
+      <div class="hidden lg:block h-full w-px bg-gray-200/40 dark:bg-gray-800/60 rounded" />
+
+      <!-- RIGHT: Notes (STUDENTS ONLY) -->
+      <div v-if="auth.isStudent" class="space-y-5">
+        <div class="flex items-end justify-between">
+          <div>
+            <h2 class="text-lg font-semibold">Your notes</h2>
+            <p class="text-xs opacity-60">Private to you</p>
+          </div>
+          <div class="text-xs opacity-50">
+            {{ notes.length }} note{{ notes.length === 1 ? '' : 's' }}
+          </div>
         </div>
 
         <UCard>
@@ -192,12 +215,21 @@
         </div>
 
         <div class="grid gap-3">
-          <UCard v-for="n in notes" :key="n.id">
-            <div class="text-sm whitespace-pre-wrap">{{ n.content }}</div>
-            <div class="text-[11px] opacity-60 mt-2">{{ n.created_at }}</div>
+          <UCard v-for="n in notes" :key="n.id" class="group">
+            <div class="space-y-2">
+              <div class="text-sm whitespace-pre-wrap leading-relaxed">
+                {{ n.content }}
+              </div>
+              <div class="text-[11px] opacity-60">
+                {{ formatDateTime(n.created_at) }}
+              </div>
+            </div>
           </UCard>
         </div>
       </div>
+
+      <!-- If not a student, keep layout stable on lg screens -->
+      <div v-else class="hidden lg:block" />
     </div>
   </div>
 </template>
@@ -233,6 +265,25 @@ const transcriptionUrls = ref<{ json: string | null; vtt: string | null }>({ jso
 const transcriptionJob = ref<{ job_id: string; status: string } | null>(null)
 const generatingTranscription = ref(false)
 const checkingJob = ref(false)
+const backToCourseUrl = computed(() => {
+  const courseId = route.query.courseId
+  return courseId ? `/courses/${courseId}` : '/courses'
+})
+
+function formatDateTime(iso?: string) {
+  if (!iso) return ''
+  const d = new Date(iso)
+
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const yyyy = String(d.getFullYear())
+
+  const hh = String(d.getHours()).padStart(2, '0')
+  const min = String(d.getMinutes()).padStart(2, '0')
+  const ss = String(d.getSeconds()).padStart(2, '0')
+
+  return `${dd}/${mm}/${yyyy}, ${hh}:${min}:${ss}`
+}
 
 async function loadLecture() {
   lecture.value = await api(`/lectures/${lectureId.value}`)
@@ -320,12 +371,12 @@ async function uploadVideo() {
     uploading.value = true
     uploadProgress.value = 0
 
-    // Step 1: Get SAS URL from the videos service
+    // Get SAS URL from the videos service
     const { uploadUrl, videoId } = await api(`/api/lectures/${lectureId.value}/videos`, {
       method: 'POST'
     })
 
-    // Step 2: Upload the file directly to Azure Blob Storage using the SAS URL
+    // Upload the file directly to Azure Blob Storage using the SAS URL
     const xhr = new XMLHttpRequest()
 
     // Track upload progress
@@ -360,13 +411,13 @@ async function uploadVideo() {
       xhr.send(selectedFile.value)
     })
 
-    // Step 3: Poll backend to verify upload and get video URL
+    // Poll backend to verify upload and get video URL
     let attempts = 0
     const maxAttempts = 30 // Poll for up to 30 seconds
-    
+
     while (attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 1000))
-      
+
       try {
         const videoStatus = await api(`/api/lectures/${lectureId.value}/videos`)
         if (videoStatus.videoId === videoId && videoStatus.videoUrl) {
@@ -379,7 +430,7 @@ async function uploadVideo() {
       } catch (err) {
         // Video not ready yet, continue polling
       }
-      
+
       attempts++
     }
 
@@ -397,11 +448,11 @@ async function uploadVideo() {
 // Check if transcription exists for this lecture
 async function checkTranscription() {
   if (!videoUrl.value) return
-  
+
   try {
     loadingTranscription.value = true
     const result = await api(`/api/lectures/${lectureId.value}/transcription`)
-    
+
     transcriptionAvailable.value = true
     transcriptionUrls.value = {
       json: result.transcript_json_url,
@@ -424,16 +475,15 @@ async function checkTranscription() {
 // Generate a new transcription
 async function generateTranscription() {
   if (!videoUrl.value) return
-  
+
   try {
     generatingTranscription.value = true
-    
+
     // First get the video details to get blob name
     const videoData = await api(`/api/lectures/${lectureId.value}/videos`)
-    
+
     const blobName = extractBlobName(videoData.videoUrl)
-    console.log('Generating transcription with blob name:', blobName)
-    
+
     // Create transcription job
     const result = await api('/api/transcriptions', {
       method: 'POST',
@@ -444,14 +494,12 @@ async function generateTranscription() {
         language: 'sl'
       }
     })
-    
-    console.log('Transcription job created:', result)
-    
+
     transcriptionJob.value = {
       job_id: result.job_id,
       status: result.status
     }
-    
+
     // Start polling for job completion
     pollTranscriptionJob(result.job_id)
   } catch (error: any) {
@@ -483,16 +531,16 @@ function extractBlobName(sasUrl: string): string {
 // Check transcription job status
 async function checkTranscriptionJob() {
   if (!transcriptionJob.value) return
-  
+
   try {
     checkingJob.value = true
     const result = await api(`/api/transcriptions/${transcriptionJob.value.job_id}`)
-    
+
     transcriptionJob.value = {
       job_id: result.job_id,
       status: result.status
     }
-    
+
     // If done, load the transcription URLs
     if (result.status === 'done') {
       await checkTranscription()
@@ -516,14 +564,14 @@ function pollTranscriptionJob(jobId: string) {
       clearInterval(pollInterval)
       return
     }
-    
+
     try {
       const result = await api(`/api/transcriptions/${jobId}`)
       transcriptionJob.value = {
         job_id: result.job_id,
         status: result.status
       }
-      
+
       // Stop polling if done or failed
       if (result.status === 'done' || result.status === 'failed') {
         clearInterval(pollInterval)
@@ -547,7 +595,7 @@ onMounted(async () => {
   await loadLecture()
   await loadVideo()
   await loadNotes()
-  
+
   // Load summary and check for existing transcription if video exists
   if (videoUrl.value) {
     await Promise.all([
