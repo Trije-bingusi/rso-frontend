@@ -6,7 +6,6 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const auth = useAuthStore()
   const { $oidc } = useNuxtApp()
 
-  // Public routes
   const publicPaths = ['/login', '/callback']
   if (publicPaths.includes(to.path)) return
 

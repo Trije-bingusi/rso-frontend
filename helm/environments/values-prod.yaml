@@ -1,0 +1,16 @@
+resources:
+  limits:
+    cpu: 400m
+    memory: 512Mi
+  requests:
+    cpu: 200m
+    memory: 256Mi
+
+ingress:
+  enabled: true
+  defaultHost: "74.161.129.128.nip.io"
+  hosts:
+    - host: "74.161.129.128.nip.io"
+      paths:
+        - path: /
+          pathType: Prefix

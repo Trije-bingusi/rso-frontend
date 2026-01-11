@@ -1,0 +1,18 @@
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+    
+ingress:
+  enabled: true
+  defaultHost: "74.161.129.128.nip.io"
+  hosts:
+    - host: "74.161.129.128.nip.io"
+      paths:
+        - path: /
+          pathType: Prefix

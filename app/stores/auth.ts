@@ -1,11 +1,12 @@
 import { defineStore } from 'pinia'
+import { useApi } from '~/composables/useApi'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(null)
   const roles = ref<string[]>([])
   const profile = ref<any>(null)
   const isReady = ref(false)
-
+  
   const isLoggedIn = computed(() => !!token.value)
   const isProfessor = computed(() => roles.value.includes('professor'))
   const isStudent = computed(() => roles.value.includes('student'))
@@ -40,10 +41,8 @@ export const useAuthStore = defineStore('auth', () => {
       return
     }
     try {
-      const config = useRuntimeConfig()
-      profile.value = await $fetch(`${config.public.apiBase}/api/users/me`, {
-        headers: { Authorization: `Bearer ${token.value}` }
-      })
+      const api = useApi()
+      profile.value = await api('/users/me')
     } catch {
       profile.value = null
     }

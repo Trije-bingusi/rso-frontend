@@ -1,75 +1,35 @@
-# Nuxt Minimal Starter
+# rso-frontend
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+Frontend application for the RSO platform.  
+It provides the user interface for courses, lectures, videos, notes, and authentication via **Keycloak**.
 
-## Setup
 
-Make sure to install dependencies:
+## Prerequisites
+- Docker Desktop/Engine
+- Bash (Git Bash/WSL/macOS/Linux)
+- Azure CLI (`az login --use-device-code`). Ensure the correct subscription is selected using `az account set --subscription "your-subscription-id"`.
+- Node.js 18+
+- npm or pnpm
 
+
+## Local Development
+The service can be run locally using Docker Compose.
 ```bash
-# npm
-npm install
-
-# pnpm
-pnpm install
-
-# yarn
-yarn install
-
-# bun
-bun install
+cp .env.example .env  # Edit the .env if needed
+docker compose up --build -d
 ```
 
-## Development Server
+## Buld and Deploy to AKS
 
-Start the development server on `http://localhost:3000`:
+> **Note:** Deploying to AKS from a local machine is not recommended. Deployments are done through a CI/CD pipeline on merges to the `main` branch. This section is left here for reference only. When developing new features, use local Docker Compose setup described in the [Local Development](#local-development) section.
 
-```bash
-# npm
-npm run dev
+First, make sure the correct `KEYVAULT_NAME` and `K8S_NAMESPACE` from the [shared-infractructure](https://github.com/Trije-bingusi/shared-infrastructure) repo is set in the [`./scripts/.env`](./scripts/.env) file. Set other variables as needed. You can use the provided [`./scripts/.env.example`](./scripts/.env.example) as a template, which already has the correct values for deployment to the development cluster.
 
-# pnpm
-pnpm dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
+To package the app as a Docker image and push it to ACR, use the [`./scripts/deploy/build.sh`](./scripts/deploy/build.sh) script.
+```sh
+./scripts/deploy/build.sh
 ```
-
-## Production
-
-Build the application for production:
-
-```bash
-# npm
-npm run build
-
-# pnpm
-pnpm build
-
-# yarn
-yarn build
-
-# bun
-bun run build
+Upon success, the image will be pushed to ACR and the immutable image tag printed. Use this tag to deplot to the AKS cluster using the [`./scripts/deploy/deploy.sh`](./scripts/deploy/deploy.sh) script:
+```sh
+./scripts/deploy/deploy.sh <image-tag>
 ```
-
-Locally preview production build:
-
-```bash
-# npm
-npm run preview
-
-# pnpm
-pnpm preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
-```
-
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.

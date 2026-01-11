@@ -73,7 +73,7 @@ const newName = ref('')
 
 const { data: courses, pending, refresh } = await useAsyncData(
   'courses',
-  () => api('/api/courses'),
+  () => api('/courses'),
   { server: false }
 )
 
@@ -81,7 +81,7 @@ async function createCourse() {
   if (!auth.isProfessor) return
   if (!newName.value) return
 
-  await api('/api/courses', {
+  await api('/courses', {
     method: 'POST',
     body: { name: newName.value }
   })

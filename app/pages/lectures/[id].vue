@@ -1,7 +1,9 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-8">
     <div class="flex items-center justify-between">
-      <NuxtLink to="/courses" class="text-sm opacity-70">← Back to courses</NuxtLink>
+      <NuxtLink :to="backToCourseUrl" class="text-sm opacity-70 hover:opacity-100 transition">
+        ← Back to course
+      </NuxtLink>
       <RoleBadge />
     </div>
 
@@ -11,50 +13,53 @@
       </h1>
     </div>
 
-    <div class="grid lg:grid-cols-3 gap-6">
-      <!-- Video -->
-      <div class="lg:col-span-2 space-y-4">
-        <UCard v-if="lecture?.manifest_url">
-          <LecturePlayer :src="lecture.manifest_url" />
-        </UCard>
+    <!-- Split view (Video/Content | Notes) -->
+    <div class="grid lg:grid-cols-[1fr_1px_420px] gap-8 items-start">
+      <!-- LEFT: Video + tools -->
+      <div class="space-y-6">
+        <!-- Video -->
+        <div class="space-y-4">
+          <UCard v-if="videoUrl">
+            <LecturePlayer :src="videoUrl" :subtitles="transcriptionUrls.vtt" />
+          </UCard>
 
-        <UCard v-else-if="!lecture?.manifest_url && !auth.isProfessor">
-          <UAlert
-            icon="i-heroicons-video-camera-slash"
-            title="No video available"
-            description="This lecture doesn't have a video source yet."
-          />
-        </UCard>
+          <UCard v-else-if="!videoUrl && !auth.isProfessor && !loadingVideo">
+            <UAlert
+              icon="i-heroicons-video-camera-slash"
+              title="No video available"
+              description="This lecture doesn't have a video source yet."
+            />
+          </UCard>
+
+          <UCard v-else-if="loadingVideo">
+            <div class="flex items-center justify-center py-10">
+              <div class="text-sm opacity-70">Loading video...</div>
+            </div>
+          </UCard>
+        </div>
 
         <!-- Upload video (PROFESSORS ONLY) -->
         <UCard v-if="auth.isProfessor">
-          <div class="space-y-3">
+          <div class="space-y-4">
             <div class="flex items-center justify-between">
-              <div class="font-semibold">Video Management</div>
-              <UButton
-                v-if="lecture?.manifest_url"
-                color="red"
-                variant="ghost"
-                size="xs"
-                @click="deleteVideo"
-                :loading="deleting"
-              >
-                Delete Video
-              </UButton>
+              <div class="font-semibold">Video management</div>
+              <div class="text-xs opacity-60">Professors only</div>
             </div>
 
-            <div v-if="!lecture?.manifest_url" class="space-y-2">
-              <label class="block text-sm font-medium">Upload video</label>
-              <input
-                ref="fileInput"
-                type="file"
-                accept="video/*"
-                @change="onFileSelected"
-                class="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 dark:file:bg-primary-900 dark:file:text-primary-300 dark:hover:file:bg-primary-800"
-              />
-              <p v-if="selectedFile" class="text-xs opacity-70">
-                Selected: {{ selectedFile.name }} ({{ formatFileSize(selectedFile.size) }})
-              </p>
+            <div v-if="!videoUrl" class="space-y-3">
+              <div class="space-y-2">
+                <label class="block text-sm font-medium">Upload video</label>
+                <input
+                  ref="fileInput"
+                  type="file"
+                  accept="video/*"
+                  @change="onFileSelected"
+                  class="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 dark:file:bg-primary-900 dark:file:text-primary-300 dark:hover:file:bg-primary-800"
+                />
+                <p v-if="selectedFile" class="text-xs opacity-70">
+                  Selected: {{ selectedFile.name }} ({{ formatFileSize(selectedFile.size) }})
+                </p>
+              </div>
 
               <div v-if="uploadProgress > 0 && uploadProgress < 100" class="space-y-1">
                 <div class="flex justify-between text-xs opacity-70">
@@ -83,21 +88,111 @@
                   :loading="uploading"
                   @click="uploadVideo"
                 >
-                  {{ uploading ? 'Uploading...' : 'Upload Video' }}
+                  {{ uploading ? 'Uploading...' : 'Upload video' }}
                 </UButton>
               </div>
             </div>
+
             <div v-else class="text-sm opacity-70">
-              Video is already uploaded. Delete it to upload a new one.
+              Video is already uploaded.
+            </div>
+          </div>
+        </UCard>
+
+        <!-- Summary Section -->
+        <UCard v-if="videoUrl && (summaryText || loadingSummary)">
+          <div class="space-y-3">
+            <div class="flex items-center gap-2">
+              <span class="text-base font-semibold">Lecture summary</span>
+              <UBadge color="blue" variant="subtle">AI Generated</UBadge>
+            </div>
+
+            <div v-if="loadingSummary" class="text-center py-5">
+              <div class="text-sm opacity-70">Loading summary...</div>
+            </div>
+
+            <div v-else-if="summaryText" class="prose prose-sm dark:prose-invert max-w-none">
+              <p class="text-sm leading-relaxed whitespace-pre-wrap">{{ summaryText }}</p>
+            </div>
+          </div>
+        </UCard>
+
+        <!-- Transcription Section -->
+        <UCard v-if="videoUrl">
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="font-semibold">Transcription</div>
+              <div class="text-xs opacity-60">Subtitles</div>
+            </div>
+
+            <!-- Loading transcription -->
+            <div v-if="loadingTranscription" class="text-center py-5">
+              <div class="text-sm opacity-70">Checking for transcription...</div>
+            </div>
+
+            <!-- Transcription available -->
+            <div v-else-if="transcriptionAvailable" class="space-y-2">
+              <UAlert
+                icon="i-heroicons-check-circle"
+                color="green"
+                title="Subtitles enabled"
+                description="Transcription is available as subtitles in the video player."
+              />
+            </div>
+
+            <!-- Job in progress -->
+            <div v-else-if="transcriptionJob" class="space-y-2">
+              <UAlert
+                icon="i-heroicons-clock"
+                color="blue"
+                title="Transcription in progress"
+                :description="`Status: ${transcriptionJob.status}`"
+              />
+              <div class="flex justify-end">
+                <UButton
+                  size="sm"
+                  variant="ghost"
+                  @click="checkTranscriptionJob"
+                  :loading="checkingJob"
+                >
+                  Refresh Status
+                </UButton>
+              </div>
+            </div>
+
+            <!-- No transcription - show generate button -->
+            <div v-else class="space-y-2">
+              <p class="text-sm opacity-70">
+                No transcription available for this lecture.
+              </p>
+              <div class="flex justify-end">
+                <UButton
+                  color="primary"
+                  @click="generateTranscription"
+                  :loading="generatingTranscription"
+                  icon="i-heroicons-language"
+                >
+                  Generate Transcription
+                </UButton>
+              </div>
             </div>
           </div>
         </UCard>
       </div>
 
-      <!-- Notes (STUDENTS ONLY) -->
-      <div v-if="auth.isStudent" class="space-y-4">
-        <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold">Your notes</h2>
+      <!-- divider -->
+      <div class="hidden lg:block h-full w-px bg-gray-200/40 dark:bg-gray-800/60 rounded" />
+
+      <!-- RIGHT: Notes (STUDENTS ONLY) -->
+      <div v-if="auth.isStudent" class="space-y-5">
+        <div class="flex items-end justify-between">
+          <div>
+            <h2 class="text-lg font-semibold">Your notes</h2>
+            <p class="text-xs opacity-60">Private to you</p>
+          </div>
+          <div class="text-xs opacity-50">
+            {{ notes.length }} note{{ notes.length === 1 ? '' : 's' }}
+          </div>
         </div>
 
         <UCard>
@@ -120,12 +215,21 @@
         </div>
 
         <div class="grid gap-3">
-          <UCard v-for="n in notes" :key="n.id">
-            <div class="text-sm whitespace-pre-wrap">{{ n.content }}</div>
-            <div class="text-[11px] opacity-60 mt-2">{{ n.created_at }}</div>
+          <UCard v-for="n in notes" :key="n.id" class="group">
+            <div class="space-y-2">
+              <div class="text-sm whitespace-pre-wrap leading-relaxed">
+                {{ n.content }}
+              </div>
+              <div class="text-[11px] opacity-60">
+                {{ formatDateTime(n.created_at) }}
+              </div>
+            </div>
           </UCard>
         </div>
       </div>
+
+      <!-- If not a student, keep layout stable on lg screens -->
+      <div v-else class="hidden lg:block" />
     </div>
   </div>
 </template>
@@ -146,11 +250,43 @@ const content = ref('')
 const selectedFile = ref<File | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const uploading = ref(false)
-const deleting = ref(false)
 const uploadProgress = ref(0)
+const videoUrl = ref<string | null>(null)
+const loadingVideo = ref(false)
+
+// Summary state
+const summaryText = ref<string | null>(null)
+const loadingSummary = ref(false)
+
+// Transcription state
+const loadingTranscription = ref(false)
+const transcriptionAvailable = ref(false)
+const transcriptionUrls = ref<{ json: string | null; vtt: string | null }>({ json: null, vtt: null })
+const transcriptionJob = ref<{ job_id: string; status: string } | null>(null)
+const generatingTranscription = ref(false)
+const checkingJob = ref(false)
+const backToCourseUrl = computed(() => {
+  const courseId = route.query.courseId
+  return courseId ? `/courses/${courseId}` : '/courses'
+})
+
+function formatDateTime(iso?: string) {
+  if (!iso) return ''
+  const d = new Date(iso)
+
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const yyyy = String(d.getFullYear())
+
+  const hh = String(d.getHours()).padStart(2, '0')
+  const min = String(d.getMinutes()).padStart(2, '0')
+  const ss = String(d.getSeconds()).padStart(2, '0')
+
+  return `${dd}/${mm}/${yyyy}, ${hh}:${min}:${ss}`
+}
 
 async function loadLecture() {
-  lecture.value = await api(`/api/lectures/${lectureId.value}`)
+  lecture.value = await api(`/lectures/${lectureId.value}`)
 }
 
 async function loadNotes() {
@@ -158,13 +294,46 @@ async function loadNotes() {
     notes.value = []
     return
   }
-  notes.value = await api(`/api/lectures/${lectureId.value}/notes`)
+  notes.value = await api(`/lectures/${lectureId.value}/notes`)
+}
+
+async function loadVideo() {
+  try {
+    loadingVideo.value = true
+    const result = await api(`/api/lectures/${lectureId.value}/videos`)
+    videoUrl.value = result.videoUrl
+  } catch (error: any) {
+    // 404 means no video exists, which is fine
+    if (error?.status !== 404) {
+      console.error('Failed to load video:', error)
+    }
+    videoUrl.value = null
+  } finally {
+    loadingVideo.value = false
+  }
+}
+
+// Load summary for the lecture
+async function loadSummary() {
+  try {
+    loadingSummary.value = true
+    const result = await api(`/api/lectures/${lectureId.value}/summary`)
+    summaryText.value = result.summary
+  } catch (error: any) {
+    // 404 means no summary exists yet, which is fine
+    if (error?.status !== 404) {
+      console.error('Failed to load summary:', error)
+    }
+    summaryText.value = null
+  } finally {
+    loadingSummary.value = false
+  }
 }
 
 async function createNote() {
   if (!auth.isStudent || !content.value) return
 
-  await api(`/api/lectures/${lectureId.value}/notes`, {
+  await api(`/lectures/${lectureId.value}/notes`, {
     method: 'POST',
     body: { content: content.value }
   })
@@ -196,99 +365,243 @@ function formatFileSize(bytes: number): string {
 }
 
 async function uploadVideo() {
-
-  
-  if (!auth.isProfessor || !selectedFile.value || !lecture.value) {
-    console.log('Upload blocked - conditions not met')
-    return
-  }
+  if (!selectedFile.value || !auth.isProfessor) return
 
   try {
     uploading.value = true
     uploadProgress.value = 0
 
-    const formData = new FormData()
-    formData.append('video', selectedFile.value)
-
-    // Use XMLHttpRequest for upload progress tracking
-    const videoUpload = await new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest()
-
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-          uploadProgress.value = Math.round((e.loaded / e.total) * 100)
-        }
-      })
-
-      xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve(JSON.parse(xhr.responseText))
-        } else {
-          reject(new Error(`Upload failed: ${xhr.statusText}`))
-        }
-      })
-
-      xhr.addEventListener('error', () => reject(new Error('Upload failed')))
-      xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')))
-
-      xhr.open('POST', `${config.public.apiBase}/api/uploads/${lectureId.value}`)
-      xhr.setRequestHeader('Authorization', `Bearer ${auth.token}`)
-      xhr.send(formData)
-    }) as any
-
-    console.log('uploadVideo called', { 
-      isProfessor: auth.isProfessor, 
-      hasFile: !!selectedFile.value, 
-      hasLecture: !!lecture.value 
+    // Get SAS URL from the videos service
+    const { uploadUrl, videoId } = await api(`/api/lectures/${lectureId.value}/videos`, {
+      method: 'POST'
     })
 
-    // Update lecture with video URL
-    await api(`/api/lectures/${lectureId.value}`, {
-      method: 'PUT',
-      body: {
-        title: lecture.value.title,
-        manifest_url: videoUpload.blob_url
+    // Upload the file directly to Azure Blob Storage using the SAS URL
+    const xhr = new XMLHttpRequest()
+
+    // Track upload progress
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        uploadProgress.value = Math.round((e.loaded / e.total) * 100)
       }
     })
 
-    clearFile()
-    uploadProgress.value = 0
-    await loadLecture()
+    // Handle upload completion
+    await new Promise<void>((resolve, reject) => {
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve()
+        } else {
+          reject(new Error(`Upload failed with status ${xhr.status}`))
+        }
+      })
+
+      xhr.addEventListener('error', () => {
+        reject(new Error('Upload failed'))
+      })
+
+      xhr.addEventListener('abort', () => {
+        reject(new Error('Upload cancelled'))
+      })
+
+      // Upload to Azure Blob Storage
+      xhr.open('PUT', uploadUrl, true)
+      xhr.setRequestHeader('x-ms-blob-type', 'BlockBlob')
+      xhr.setRequestHeader('x-ms-blob-content-type', selectedFile.value!.type || 'video/mp4')
+      xhr.send(selectedFile.value)
+    })
+
+    // Poll backend to verify upload and get video URL
+    let attempts = 0
+    const maxAttempts = 30 // Poll for up to 30 seconds
+
+    while (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 1000))
+
+      try {
+        const videoStatus = await api(`/api/lectures/${lectureId.value}/videos`)
+        if (videoStatus.videoId === videoId && videoStatus.videoUrl) {
+          // Upload successful, update video URL
+          videoUrl.value = videoStatus.videoUrl
+          clearFile()
+          uploadProgress.value = 100
+          return
+        }
+      } catch (err) {
+        // Video not ready yet, continue polling
+      }
+
+      attempts++
+    }
+
+    throw new Error('Upload verification timeout')
+
   } catch (error) {
     console.error('Failed to upload video:', error)
     alert('Failed to upload video. Please try again.')
+    uploadProgress.value = 0
   } finally {
     uploading.value = false
   }
 }
 
-async function deleteVideo() {
-  if (!auth.isProfessor || !lecture.value?.manifest_url) return
-  if (!confirm('Are you sure you want to delete this video?')) return
+// Check if transcription exists for this lecture
+async function checkTranscription() {
+  if (!videoUrl.value) return
 
   try {
-    deleting.value = true
+    loadingTranscription.value = true
+    const result = await api(`/api/lectures/${lectureId.value}/transcription`)
 
-    // Update lecture to remove video URL
-    await api(`/api/lectures/${lectureId.value}`, {
-      method: 'PUT',
+    transcriptionAvailable.value = true
+    transcriptionUrls.value = {
+      json: result.transcript_json_url,
+      vtt: result.transcript_vtt_url
+    }
+    transcriptionJob.value = null
+  } catch (error: any) {
+    // 404 means no transcription exists yet
+    if (error?.status === 404) {
+      transcriptionAvailable.value = false
+      transcriptionUrls.value = { json: null, vtt: null }
+    } else {
+      console.error('Failed to check transcription:', error)
+    }
+  } finally {
+    loadingTranscription.value = false
+  }
+}
+
+// Generate a new transcription
+async function generateTranscription() {
+  if (!videoUrl.value) return
+
+  try {
+    generatingTranscription.value = true
+
+    // First get the video details to get blob name
+    const videoData = await api(`/api/lectures/${lectureId.value}/videos`)
+
+    const blobName = extractBlobName(videoData.videoUrl)
+
+    // Create transcription job
+    const result = await api('/api/transcriptions', {
+      method: 'POST',
       body: {
-        title: lecture.value.title,
-        manifest_url: ''
+        lecture_id: lectureId.value,
+        video_url: videoData.videoUrl,
+        video_blob_name: blobName,
+        language: 'sl'
       }
     })
 
-    await loadLecture()
-  } catch (error) {
-    console.error('Failed to delete video:', error)
-    alert('Failed to delete video. Please try again.')
+    transcriptionJob.value = {
+      job_id: result.job_id,
+      status: result.status
+    }
+
+    // Start polling for job completion
+    pollTranscriptionJob(result.job_id)
+  } catch (error: any) {
+    console.error('Failed to generate transcription:', error)
+    console.error('Error details:', {
+      status: error?.status,
+      statusText: error?.statusText,
+      data: error?.data
+    })
+    alert(`Failed to generate transcription: ${error?.data?.error || error?.message || 'Unknown error'}`)
   } finally {
-    deleting.value = false
+    generatingTranscription.value = false
   }
+}
+
+// Extract blob name from SAS URL
+function extractBlobName(sasUrl: string): string {
+  try {
+    const url = new URL(sasUrl)
+    const pathParts = url.pathname.split('/')
+    // Last part is the blob name (e.g., /container/blobname.mp4)
+    return pathParts[pathParts.length - 1]
+  } catch (error) {
+    console.error('Failed to extract blob name:', error)
+    return ''
+  }
+}
+
+// Check transcription job status
+async function checkTranscriptionJob() {
+  if (!transcriptionJob.value) return
+
+  try {
+    checkingJob.value = true
+    const result = await api(`/api/transcriptions/${transcriptionJob.value.job_id}`)
+
+    transcriptionJob.value = {
+      job_id: result.job_id,
+      status: result.status
+    }
+
+    // If done, load the transcription URLs
+    if (result.status === 'done') {
+      await checkTranscription()
+    }
+  } catch (error: any) {
+    // If job not found (404), clear the job reference
+    if (error?.status === 404) {
+      transcriptionJob.value = null
+    } else {
+      console.error('Failed to check job status:', error)
+    }
+  } finally {
+    checkingJob.value = false
+  }
+}
+
+// Poll transcription job until complete
+function pollTranscriptionJob(jobId: string) {
+  const pollInterval = setInterval(async () => {
+    if (!transcriptionJob.value) {
+      clearInterval(pollInterval)
+      return
+    }
+
+    try {
+      const result = await api(`/api/transcriptions/${jobId}`)
+      transcriptionJob.value = {
+        job_id: result.job_id,
+        status: result.status
+      }
+
+      // Stop polling if done or failed
+      if (result.status === 'done' || result.status === 'failed') {
+        clearInterval(pollInterval)
+        if (result.status === 'done') {
+          await checkTranscription()
+        }
+      }
+    } catch (error: any) {
+      // If job not found (404), stop polling and clear job
+      if (error?.status === 404) {
+        clearInterval(pollInterval)
+        transcriptionJob.value = null
+      } else {
+        console.error('Failed to poll job status:', error)
+      }
+    }
+  }, 5000) // Poll every 5 seconds
 }
 
 onMounted(async () => {
   await loadLecture()
+  await loadVideo()
   await loadNotes()
+
+  // Load summary and check for existing transcription if video exists
+  if (videoUrl.value) {
+    await Promise.all([
+      loadSummary(),
+      checkTranscription()
+    ])
+  }
 })
 </script>

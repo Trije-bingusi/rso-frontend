@@ -6,7 +6,17 @@
         class="h-full w-full"
         controls
         playsinline
-      />
+        crossorigin="anonymous"
+      >
+        <track
+          v-if="subtitles"
+          kind="subtitles"
+          label="Slovenian"
+          srclang="sl"
+          :src="subtitles"
+          default
+        />
+      </video>
     </div>
 
     <div class="text-xs opacity-60 break-all">
@@ -20,6 +30,7 @@ import Hls from 'hls.js'
 
 const props = defineProps<{
   src: string
+  subtitles?: string | null
 }>()
 
 const videoEl = ref<HTMLVideoElement | null>(null)
